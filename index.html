@@ -1,1 +1,853 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NEXUS / Operacional · Eficiência e Gargalos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+
+<style>
+/* VARIÁVEIS DE TEMA */
+:root {
+    --bg: #0a0f16; --panel: rgba(17,27,39,.92); --panel-solid: #111b27;
+    --panel-border: rgba(164,190,214,.13); --text: #eaf1f7; --muted: #8190a4;
+    --lime: #c9f36a; --cyan: #66e0d1; --orange: #ffad66; --red: #ff6b78;
+    --blue: #3b80d9; --dark-blue: #274566; --light-blue: #a0c6ed; 
+    --mono: 'DM Mono', monospace; --sans: 'Manrope', system-ui, sans-serif;
+}
+[data-theme="light"] {
+    --bg: #f4f6f9; --panel: rgba(255,255,255,.95); --panel-solid: #ffffff;
+    --panel-border: rgba(0,0,0,.1); --text: #1a2b3c; --muted: #64768a;
+    --lime: #729b11; --cyan: #008f7d; --orange: #d95e00; --red: #d32f2f;
+    --blue: #3b80d9; --dark-blue: #274566; --light-blue: #a0c6ed;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--text); font-family: var(--sans); overflow-x: hidden; transition: background 0.3s, color 0.3s; }
+button, input { cursor: pointer; font-family: inherit; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 4px; opacity: 0.5; }
+
+.app { padding: 25px 40px; max-width: 1800px; margin: auto; }
+.page-head { display: flex; align-items: flex-end; justify-content: space-between; padding-bottom: 25px; border-bottom: 1px solid var(--panel-border); margin-bottom: 25px; }
+.eyebrow { display: flex; align-items: center; gap: 9px; color: var(--cyan); font: 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; margin-bottom: 10px; }
+.eyebrow .line { height: 1px; width: 22px; background: var(--cyan); box-shadow: 0 0 9px rgba(102,224,209,.4); }
+h1 { font-size: 28px; line-height: 1.15; letter-spacing: -.055em; margin: 0; font-weight: 700; }
+.page-subtitle { font-size: 13px; color: var(--muted); margin-top: 9px; }
+.head-actions { display: flex; gap: 12px; align-items: center; }
+.status-pill { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid rgba(201,243,106,.2); border-radius: 99px; color: var(--lime); font: 10px var(--mono); background: rgba(201,243,106,.05); }
+.pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 11px var(--lime); animation: pulse 1.8s infinite; }
+
+/* Alterado de 5 colunas para 4 colunas por conta da exclusão do card */
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; margin-bottom: 20px; }
+.kpi-card { border: 1px solid var(--panel-border); border-radius: 14px; background: var(--panel); backdrop-filter: blur(10px); padding: 20px; position: relative; }
+.kpi-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; }
+.kpi-value-line { display: flex; align-items: baseline; gap: 8px; margin-top: 15px; }
+.kpi-value { font-size: 32px; font-weight: 700; letter-spacing: -.05em; }
+.kpi-foot { margin-top: 12px; font: 10px var(--mono); color: var(--muted); }
+
+/* VELOCÍMETRO */
+.gauge-container { position: relative; height: 75px; margin-top: 10px; }
+.gauge-val { position: absolute; bottom: 0; left: 0; width: 100%; text-align: center; font-size: 24px; font-weight: 700; color: var(--cyan); }
+
+.dashboard-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 15px; }
+.dashboard-grid.full { grid-template-columns: 1fr; }
+.panel { border: 1px solid var(--panel-border); border-radius: 15px; background: var(--panel); display: flex; flex-direction: column; overflow: hidden; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 15px; border-bottom: 1px solid var(--panel-border); }
+.panel-title { font-size: 14px; font-weight: 700; margin: 0; }
+.panel-subtitle { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.panel-action { background: rgba(102,224,209,.05); border: 1px solid rgba(102,224,209,.3); border-radius: 7px; padding: 7px 12px; color: var(--cyan); font: 10px var(--mono); display: flex; align-items: center; gap: 6px; }
+
+/* DIGITAL TWIN 3D */
+.scene-wrap { height: 400px; position: relative; overflow: hidden; background: radial-gradient(ellipse at 48% 48%, var(--panel), #000000 80%); isolation: isolate; }
+[data-theme="light"] .scene-wrap { background: radial-gradient(ellipse at 48% 48%, #ffffff, #e2e8f0 80%); }
+#warehouse3d { position: absolute; inset: 0; z-index: 1; cursor: grab; }
+#warehouse3d:active { cursor: grabbing; }
+
+.scene-overlay { position: absolute; z-index: 2; top: 15px; left: 20px; display: flex; gap: 15px; align-items: center; font: 10px var(--mono); color: var(--cyan); letter-spacing: 0.1em; pointer-events: none;}
+.scene-overlay input { background: rgba(0,0,0,0.5); border: 1px solid var(--cyan); color: var(--cyan); padding: 8px 12px; border-radius: 6px; font: 11px var(--mono); outline: none; pointer-events: auto;}
+.scene-overlay input::placeholder { color: rgba(102,224,209,0.5); }
+.scene-hint { position: absolute; z-index: 2; bottom: 15px; left: 20px; font: 10px var(--mono); color: var(--cyan); background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; pointer-events: none;}
+
+[data-theme="light"] .scene-overlay { color: var(--blue); font-weight: 600; }
+[data-theme="light"] .scene-overlay input { background: rgba(255,255,255,0.85); border-color: var(--blue); color: var(--blue); box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+[data-theme="light"] .scene-overlay input::placeholder { color: rgba(59, 128, 217, 0.5); }
+[data-theme="light"] .scene-hint { color: var(--blue); background: rgba(255,255,255,0.85); font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+
+/* SIDEBAR DO PALLET */
+.pallet-sidebar {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 350px;
+    background: rgba(10, 15, 22, 0.95); backdrop-filter: blur(10px);
+    border-left: 1px solid var(--cyan); z-index: 10;
+    transform: translateX(100%); transition: transform 0.3s ease;
+    padding: 20px; overflow-y: auto; color: #eaf1f7;
+}
+[data-theme="light"] .pallet-sidebar { background: rgba(255, 255, 255, 0.95); color: #1a2b3c; border-left: 1px solid var(--blue); }
+.pallet-sidebar.open { transform: translateX(0); }
+.sidebar-close { position: absolute; top: 15px; right: 15px; background: transparent; border: none; color: var(--muted); font-size: 18px; }
+.ps-title { font-size: 16px; font-weight: 700; color: var(--lime); margin-bottom: 5px; }
+[data-theme="light"] .ps-title { color: var(--blue); }
+.ps-addr { font: 12px var(--mono); color: var(--cyan); margin-bottom: 20px; border-bottom: 1px solid rgba(102,224,209,.2); padding-bottom: 10px;}
+[data-theme="light"] .ps-addr { color: var(--text); border-bottom-color: rgba(0,0,0,0.1); }
+.ps-stat { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 8px; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 4px;}
+[data-theme="light"] .ps-stat { border-bottom-color: rgba(0,0,0,0.05); }
+.ps-stat strong { color: var(--cyan); }
+[data-theme="light"] .ps-stat strong { color: var(--blue); }
+.nf-accordion { margin-top: 20px; }
+.nf-header { background: rgba(255,255,255,0.05); padding: 10px; margin-top: 5px; border-radius: 5px; font: 11px var(--mono); cursor: pointer; display: flex; justify-content: space-between; border: 1px solid transparent; }
+[data-theme="light"] .nf-header { background: rgba(0,0,0,0.03); }
+.nf-header:hover { border-color: var(--cyan); }
+[data-theme="light"] .nf-header:hover { border-color: var(--blue); }
+.nf-body { display: none; padding: 12px; font-size: 11px; background: rgba(0,0,0,0.3); border-radius: 0 0 5px 5px; }
+[data-theme="light"] .nf-body { background: rgba(0,0,0,0.02); }
+.nf-body.open { display: block; }
+
+.chart-container { position: relative; flex: 1; min-height: 0; padding: 15px 20px 20px; width: 100%; min-height: 280px; }
+
+/* TABELAS */
+.table-wrap { max-height: 380px; overflow-y: auto; overflow-x: auto; padding: 0; }
+table { width: 100%; border-collapse: collapse; min-width: 550px; }
+th { 
+    text-align: left; padding: 12px 16px; color: var(--muted); font: 10px var(--mono); 
+    font-weight: 600; text-transform: uppercase; border-bottom: 1px solid var(--panel-border); 
+    position: sticky; top: 0; background: var(--panel-solid); z-index: 2;
+    cursor: pointer; user-select: none; transition: background 0.2s;
+}
+th:hover { background: rgba(102,224,209,0.05); }
+[data-theme="light"] th:hover { background: rgba(59, 128, 217, 0.05); }
+th::after { content: ''; display: inline-block; margin-left: 5px; font-size: 10px; opacity: 0.5; }
+th.sort-asc::after { content: '▲'; opacity: 1; color: var(--cyan); }
+th.sort-desc::after { content: '▼'; opacity: 1; color: var(--cyan); }
+[data-theme="light"] th.sort-asc::after, [data-theme="light"] th.sort-desc::after { color: var(--blue); }
+
+.col-filter {
+    display: block; width: 100%; margin-top: 6px; background: rgba(0,0,0,0.2);
+    border: 1px solid var(--panel-border); color: var(--text); padding: 4px 6px;
+    border-radius: 4px; font: 9px var(--mono); outline: none; box-sizing: border-box;
+}
+.col-filter:focus { border-color: var(--cyan); }
+[data-theme="light"] .col-filter { background: rgba(255,255,255,0.7); color: #1a2b3c; }
+[data-theme="light"] .col-filter:focus { border-color: var(--blue); }
+
+td { padding: 12px 16px; border-bottom: 1px solid var(--panel-border); font-size: 12px; }
+tbody tr:hover { background: rgba(201,243,106,.05); }
+
+.status-tag { display: inline-flex; align-items: center; gap: 5px; border-radius: 5px; padding: 5px 8px; font: 10px var(--mono); font-weight: 600; }
+.status-tag.warn { color: var(--orange); background: rgba(255,173,102,.15); }
+.status-tag.ok { color: var(--lime); background: rgba(201,243,106,.15); }
+
+@keyframes pulse { 0%, 100% { opacity: 1; box-shadow: 0 0 11px var(--lime); } 50% { opacity: .45; box-shadow: 0 0 3px var(--lime); } }
+</style>
+</head>
+<body>
+
+<svg aria-hidden="true" width="0" height="0" style="position:absolute;overflow:hidden"><defs>
+    <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></symbol>
+</defs></svg>
+
+<div class="app">
+    <header class="page-head">
+        <div>
+            <h1 id="pageTitle">Otimização<span style="color:var(--lime)">.</span></h1>
+        </div>
+        <div class="head-actions">
+            <button class="panel-action" id="btn-theme" style="color:var(--text); border-color:var(--panel-border)"><svg width="14" height="14"><use href="#i-moon"/></svg> Mudar Tema</button>
+            <div class="status-pill">
+                <i class="pulse-dot" id="conn-dot"></i> <span id="conn-status">AGUARDANDO DADOS...</span>
+            </div>
+        </div>
+    </header>
+
+    <section class="kpi-grid">
+        <article class="kpi-card"><div class="kpi-top"><span>Fila Ressuprimento</span> <span style="color:var(--cyan)"><svg width="18" height="18"><use href="#i-box"/></svg></span></div><div class="kpi-value-line"><strong class="kpi-value" id="kpi-ressuprimento">0</strong> <span class="kpi-unit">peças</span></div></article>
+        <article class="kpi-card"><div class="kpi-top"><span>Não Endereçado</span> <span style="color:var(--blue)"><svg width="18" height="18"><use href="#i-box"/></svg></span></div><div class="kpi-value-line"><strong class="kpi-value" id="kpi-backlog">0</strong> <span class="kpi-unit">peças</span></div></article>
+        <article class="kpi-card"><div class="kpi-top"><span>Produtividade Média (Endereçamento)</span> <span style="color:var(--lime)"><svg width="18" height="18"><use href="#i-box"/></svg></span></div><div class="kpi-value-line"><strong class="kpi-value" id="kpi-prod">0</strong> <span class="kpi-unit">pçs / hora</span></div></article>
+        
+        <!-- KPI VELOCÍMETRO MONO SKU -->
+        <article class="kpi-card">
+            <div class="kpi-top"><span>Estoque Mono SKU</span> <span style="color:var(--cyan)"><svg width="18" height="18"><use href="#i-box"/></svg></span></div>
+            <div class="gauge-container">
+                <canvas id="gaugeMonoSku"></canvas>
+                <div class="gauge-val" id="kpi-mono-val">0%</div>
+            </div>
+        </article>
+    </section>
+
+    <section class="dashboard-grid full">
+        <article class="panel">
+            <div class="panel-head" style="padding-bottom: 12px; border-bottom: 0;">
+                <div><h2 class="panel-title">Digital Twin · Área de Triagem</h2><div class="panel-subtitle">Navegação em 96 posições exatas. Arraste para mover, scroll para zoom. Clique no pallet para detalhes.</div></div>
+                <div style="font: 9px var(--mono); color: var(--cyan); border: 1px solid rgba(102,224,209,.2); padding: 4px 8px; border-radius: 4px;">LIVE FEED</div>
+            </div>
+            <div class="scene-wrap">
+                <div class="scene-overlay">
+                    <span>SP-01 / CAMERA 3D</span>
+                    <input type="text" id="filterNF" placeholder="Filtrar por NF..." autocomplete="off" />
+                </div>
+                <div class="scene-hint">Duplo clique no pallet para modo 360º</div>
+                
+                <div id="warehouse3d"></div>
+
+                <div class="pallet-sidebar" id="palletSidebar">
+                    <button class="sidebar-close" onclick="closeSidebar()">✖</button>
+                    <div class="ps-title">Detalhes do Pallet</div>
+                    <div class="ps-addr" id="psAddr">ENDEREÇO</div>
+                    <div class="ps-stat"><span>Fornecedor:</span> <strong id="psFornecedor"></strong></div>
+                    <div class="ps-stat"><span>Grifes:</span> <strong id="psGrifes"></strong></div>
+                    <div class="ps-stat"><span>Total Peças:</span> <strong id="psPecas"></strong></div>
+                    <div class="ps-stat"><span>Total Volumes (Caixas):</span> <strong id="psVolumes"></strong></div>
+                    <div class="ps-stat"><span>Qtd NFs:</span> <strong id="psNfs"></strong></div>
+                    <div class="nf-accordion" id="psAccordion"></div>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="dashboard-grid">
+        <article class="panel"><div class="panel-head"><div><h2 class="panel-title">Evolução do Não Endereçado (Gargalo)</h2></div></div><div class="chart-container"><canvas id="chartEvolucao"></canvas></div></article>
+        <article class="panel"><div class="panel-head"><div><h2 class="panel-title">Produtividade de Endereçamento</h2></div></div><div class="chart-container"><canvas id="chartProdutividade"></canvas></div></article>
+    </section>
+
+    <section class="dashboard-grid full">
+        <!-- NOVA TABELA DE TRIAGEM -->
+        <article class="panel">
+            <div class="panel-head"><div><h2 class="panel-title">Fila de Triagem</h2><div class="panel-subtitle">Painel completo das NFs aguardando na área E3TR99</div></div><button class="panel-action" id="btn-export-triagem"><svg width="14" height="14"><use href="#i-download"/></svg> Exportar Triagem</button></div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-table="tri" data-key="endereço">Endereço <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="tri" data-key="Filial">Filial <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="tri" data-key="fornecedor">Fornecedor <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="tri" data-key="nf">NF <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="tri" data-key="idade_nf">Idade (Dias) <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="tri" data-key="caixa">Caixa (RC) <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="tri" data-key="qtde">Qtd <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-triagem"><tr><td colspan="7">Carregando...</td></tr></tbody>
+                </table>
+            </div>
+        </article>
+    </section>
+
+    <section class="dashboard-grid">
+        <article class="panel">
+            <div class="panel-head"><div><h2 class="panel-title">Ação Imediata: Ressuprimento</h2></div><button class="panel-action" id="btn-export-ressuprimento"><svg width="14" height="14"><use href="#i-download"/></svg> Exportar</button></div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-table="res" data-key="PRODUTO">Produto <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="res" data-key="COR">Cor <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="res" data-key="TAMANHO">Tam <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="res" data-key="TOTAL">Qtd <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-ressuprimento"><tr><td colspan="4">Carregando...</td></tr></tbody>
+                </table>
+            </div>
+        </article>
+        <article class="panel">
+            <div class="panel-head"><div><h2 class="panel-title">Radar de Equipe (Dia Atual)</h2></div></div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th data-table="eqp" data-key="NOME">Operador <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="eqp" data-key="TURNO">Turno <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="eqp" data-key="HORAS_TRABALHADAS">Horas <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="eqp" data-key="PRODUTIVIDADE_HORA">Produtividade <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                            <th data-table="eqp" data-key="STATUS">Status <br><input type="text" class="col-filter" placeholder="Buscar..."></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-equipe"><tr><td colspan="5">Carregando...</td></tr></tbody>
+                </table>
+            </div>
+        </article>
+    </section>
+</div>
+
+<script>
+let globalCache = {};
+let activeCharts = [];
+let chartGauge = null;
+Chart.register(ChartDataLabels);
+
+const fmtT = new Intl.NumberFormat('pt-BR');
+const fmtP = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+function getThemeColors() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    return { 
+        text: isLight ? '#ffffff' : '#eaf1f7', 
+        muted: isLight ? '#64768a' : '#8190a4', 
+        grid: isLight ? 'rgba(0,0,0,0.05)' : 'rgba(164,190,214,0.05)',
+        lineChart: '#3b80d9',
+        barChart: isLight ? '#274566' : '#a0c6ed',
+        chartLabelBg: isLight ? '#1a2b3c' : '#274566'
+    };
+}
+
+document.getElementById('btn-theme').addEventListener('click', () => {
+    const root = document.documentElement;
+    const isLight = root.getAttribute('data-theme') === 'light';
+    root.setAttribute('data-theme', isLight ? 'dark' : 'light');
+    
+    const colors = getThemeColors();
+    if(activeCharts.length === 2) {
+        activeCharts[0].options.scales.x.ticks.color = colors.muted;
+        activeCharts[0].options.scales.y.ticks.color = colors.muted;
+        activeCharts[0].options.scales.y.grid.color = colors.grid;
+        if(activeCharts[0].options.plugins.datalabels) {
+            activeCharts[0].options.plugins.datalabels.color = colors.text;
+            activeCharts[0].options.plugins.datalabels.backgroundColor = colors.chartLabelBg;
+        }
+        activeCharts[0].update();
+
+        activeCharts[1].data.datasets[0].backgroundColor = colors.barChart;
+        activeCharts[1].options.scales.x.ticks.color = colors.muted;
+        activeCharts[1].options.scales.y.ticks.color = colors.muted;
+        activeCharts[1].options.scales.y.grid.color = colors.grid;
+        if(activeCharts[1].options.plugins.datalabels) {
+            activeCharts[1].options.plugins.datalabels.color = colors.text;
+        }
+        activeCharts[1].update();
+    }
+    
+    if (window.scene3D) {
+        window.scene3D.fog.color.set(!isLight ? '#f4f6f9' : '#000000');
+    }
+});
+
+window.addEventListener('pywebviewready', async () => {
+    document.getElementById('conn-status').textContent = "SINCRONIZADO";
+    document.getElementById('conn-status').style.color = "var(--lime)";
+    document.getElementById('conn-dot').style.backgroundColor = "var(--lime)";
+    
+    try {
+        const dados = await window.pywebview.api.load_cache();
+        globalCache = dados || {};
+        
+        renderKPIs(globalCache);
+        renderGraficos(globalCache);
+        initTabelas(globalCache);
+        
+        const dtTriagem = globalCache.triagem || [];
+        initTriagem3D(dtTriagem);
+    } catch (e) { console.error(e); }
+});
+
+function renderKPIs(data) {
+    const resList = data.ressuprimento || [];
+    document.getElementById('kpi-ressuprimento').textContent = fmtT.format(resList.reduce((a, c) => a + (c.TOTAL || 0), 0));
+    
+    const eqp = data.enderecamento_dia || [];
+    if(eqp.length > 0) {
+        const pcs = eqp.reduce((a, c) => a + (c.QTD_ENDERECADA || 0), 0);
+        const hrs = eqp.reduce((a, c) => a + (c.HORAS_TRABALHADAS || 0), 0);
+        document.getElementById('kpi-prod').textContent = fmtT.format(hrs > 0 ? pcs / hrs : 0);
+    }
+    
+    const bl = data.backlog_ne || [];
+    document.getElementById('kpi-backlog').textContent = fmtT.format(bl.reduce((a, c) => a + (c.nao_enderecado || 0), 0));
+
+    if(chartGauge) chartGauge.destroy();
+    
+    let taxaMono = 0;
+    const monoData = data.mono_sku || [];
+    if (monoData.length > 0) {
+        taxaMono = parseFloat(monoData[0].taxa_mono || 0);
+    }
+    
+    const ctxG = document.getElementById('gaugeMonoSku').getContext('2d');
+    const remains = 100 - taxaMono;
+    document.getElementById('kpi-mono-val').textContent = fmtP.format(taxaMono) + '%';
+    
+    chartGauge = new Chart(ctxG, {
+        type: 'doughnut',
+        data: {
+            datasets: [{ 
+                data: [taxaMono, remains], 
+                backgroundColor: ['#66e0d1', 'rgba(164,190,214,0.1)'], 
+                borderWidth: 0, 
+                cutout: '80%' 
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            rotation: 270, circumference: 180, 
+            plugins: { legend: { display: false }, tooltip: { enabled: false }, datalabels: { display: false } }
+        }
+    });
+}
+
+function renderGraficos(data) {
+    const colors = getThemeColors();
+    activeCharts.forEach(c => c.destroy()); activeCharts = [];
+
+    const hist = data.historico_ne || [];
+    activeCharts.push(new Chart(document.getElementById('chartEvolucao').getContext('2d'), {
+        type: 'line',
+        data: { 
+            labels: hist.map(d => d.DT_REPA ? d.DT_REPA.substring(5,10).split('-').reverse().join('/') : ''), 
+            datasets: [{ 
+                label: 'Quantidade NE',
+                data: hist.map(d => d.QTD_NAO_ENDERECADA || 0), 
+                taxaRaw: hist.map(d => d.TAXA_NE_PERC || 0),
+                borderColor: colors.lineChart, 
+                backgroundColor: 'rgba(59, 128, 217, 0.1)', 
+                fill: true, tension: 0.4,
+                pointBackgroundColor: 'var(--bg)', pointBorderColor: colors.lineChart, pointRadius: 4
+            }] 
+        },
+        options: { 
+            responsive: true, maintainAspectRatio: false, 
+            scales: { y: { grid: { color: colors.grid }, ticks: { color: colors.muted } }, x: { grid: { display: false }, ticks: { color: colors.muted } } }, 
+            plugins: { 
+                legend: { display: false }, 
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            let perc = ctx.dataset.taxaRaw[ctx.dataIndex];
+                            return `Volume NE: ${fmtT.format(ctx.raw)} | Taxa: ${fmtP.format(perc)}%`;
+                        }
+                    }
+                },
+                datalabels: { 
+                    align: 'top', 
+                    color: colors.text,
+                    backgroundColor: colors.chartLabelBg,
+                    borderRadius: 4,
+                    padding: 4,
+                    font: { size: 10, weight: 'bold' }, 
+                    formatter: v => fmtT.format(v) 
+                } 
+            }, 
+            layout: { padding: { top: 30 } } 
+        }
+    }));
+
+    const agg = {};
+    (data.enderecamento_dia || []).forEach(e => { const t = e.TURNO || 'Outros'; if(!agg[t]) agg[t] = {pcs:0, hrs:0}; agg[t].pcs += (e.QTD_ENDERECADA||0); agg[t].hrs += (e.HORAS_TRABALHADAS||0); });
+    const lbls = Object.keys(agg);
+    
+    activeCharts.push(new Chart(document.getElementById('chartProdutividade').getContext('2d'), {
+        type: 'bar',
+        data: { 
+            labels: lbls, 
+            datasets: [{ 
+                label: 'Peças/h Média',
+                data: lbls.map(t => agg[t].hrs > 0 ? Math.round(agg[t].pcs / agg[t].hrs) : 0), 
+                backgroundColor: colors.barChart, borderRadius: 4 
+            }] 
+        },
+        options: { 
+            responsive: true, maintainAspectRatio: false, 
+            scales: { y: { grid: { color: colors.grid }, ticks: { color: colors.muted } }, x: { grid: { display: false }, ticks: { color: colors.muted } } }, 
+            plugins: { legend: { display: false }, datalabels: { align: 'center', color: colors.text, font: { size: 12, weight: 'bold' }, formatter: v => fmtT.format(v) } }, 
+            layout: { padding: { top: 10 } } 
+        }
+    }));
+}
+
+/* =========================================================================
+   SISTEMA DE TABELAS ESTILO EXCEL
+========================================================================= */
+let tblState = {
+    res: { data: [], sortCol: null, sortAsc: true, filters: {} },
+    eqp: { data: [], sortCol: null, sortAsc: true, filters: {} },
+    tri: { data: [], sortCol: null, sortAsc: true, filters: {} }
+};
+
+function initTabelas(data) {
+    tblState.res.data = data.ressuprimento || [];
+    tblState.eqp.data = (data.enderecamento_dia || []).map(item => {
+        item.STATUS = (item.PRODUTIVIDADE_HORA < 50 && item.HORAS_TRABALHADAS > 1) ? 'Baixa' : 'No Ritmo';
+        return item;
+    });
+    tblState.tri.data = data.triagem || [];
+
+    if (!window.tabelasInitialized) {
+        document.querySelectorAll('th[data-key]').forEach(th => {
+            th.addEventListener('dblclick', (e) => {
+                if(e.target.tagName === 'INPUT') return; 
+                const tableKey = th.getAttribute('data-table');
+                const colKey = th.getAttribute('data-key');
+                const state = tblState[tableKey];
+                
+                if (state.sortCol === colKey) state.sortAsc = !state.sortAsc;
+                else { state.sortCol = colKey; state.sortAsc = true; }
+                updateTableRender(tableKey);
+            });
+
+            const input = th.querySelector('.col-filter');
+            if (input) {
+                input.addEventListener('input', (e) => {
+                    tblState[th.getAttribute('data-table')].filters[th.getAttribute('data-key')] = e.target.value.trim().toLowerCase();
+                    updateTableRender(th.getAttribute('data-table'));
+                });
+                input.addEventListener('dblclick', e => e.stopPropagation());
+            }
+        });
+        window.tabelasInitialized = true;
+    }
+
+    updateTableRender('res');
+    updateTableRender('eqp');
+    updateTableRender('tri');
+}
+
+function updateTableRender(tableKey) {
+    const state = tblState[tableKey];
+    
+    let filtered = state.data.filter(row => {
+        for (let key in state.filters) {
+            if (state.filters[key]) {
+                const cellVal = String(row[key] !== undefined && row[key] !== null ? row[key] : '').toLowerCase();
+                if (!cellVal.includes(state.filters[key])) return false;
+            }
+        }
+        return true;
+    });
+
+    if (state.sortCol) {
+        filtered.sort((a, b) => {
+            let valA = a[state.sortCol] !== undefined && a[state.sortCol] !== null ? a[state.sortCol] : '';
+            let valB = b[state.sortCol] !== undefined && b[state.sortCol] !== null ? b[state.sortCol] : '';
+            
+            if (!isNaN(valA) && !isNaN(valB) && valA !== '' && valB !== '') {
+                valA = Number(valA); valB = Number(valB);
+            } else {
+                valA = String(valA).toLowerCase(); valB = String(valB).toLowerCase();
+            }
+            if (valA < valB) return state.sortAsc ? -1 : 1;
+            if (valA > valB) return state.sortAsc ? 1 : -1;
+            return 0;
+        });
+    }
+
+    if (tableKey === 'res') {
+        const tbody = document.getElementById('tbody-ressuprimento');
+        if (filtered.length === 0) tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding: 20px;">Nenhum dado encontrado</td></tr>';
+        else tbody.innerHTML = filtered.slice(0, 100).map(item => `<tr><td><strong>${item.PRODUTO}</strong></td><td>${item.COR}</td><td>${item.TAMANHO}</td><td style="color:var(--cyan)"><b>${fmtT.format(item.TOTAL)}</b></td></tr>`).join('');
+    } else if (tableKey === 'eqp') {
+        const tbody = document.getElementById('tbody-equipe');
+        if (filtered.length === 0) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 20px;">Nenhum dado encontrado</td></tr>';
+        else tbody.innerHTML = filtered.map(item => `<tr><td><strong>${item.NOME}</strong></td><td>${item.TURNO}</td><td>${item.HORAS_TRABALHADAS} h</td><td>${fmtT.format(item.PRODUTIVIDADE_HORA)} un/h</td><td><span class="status-tag ${item.STATUS==='Baixa'?'warn':'ok'}">${item.STATUS}</span></td></tr>`).join('');
+    } else if (tableKey === 'tri') {
+        const tbody = document.getElementById('tbody-triagem');
+        if (filtered.length === 0) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding: 20px;">Nenhum dado encontrado</td></tr>';
+        else tbody.innerHTML = filtered.slice(0, 200).map(item => `<tr><td><strong>${item.endereço||''}</strong></td><td>${item.Filial||''}</td><td>${item.fornecedor||''}</td><td>${item.nf||''}</td><td>${item.idade_nf||0}</td><td>${item.caixa||''}</td><td style="color:var(--cyan)"><b>${item.qtde||0}</b></td></tr>`).join('');
+    }
+    
+    document.querySelectorAll(`th[data-table="${tableKey}"]`).forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.getAttribute('data-key') === state.sortCol) th.classList.add(state.sortAsc ? 'sort-asc' : 'sort-desc');
+    });
+}
+
+function exportarTabela(tableKey, nomeArquivo) {
+    const rawData = tblState[tableKey].data.filter(row => {
+        for (let key in tblState[tableKey].filters) if (tblState[tableKey].filters[key] && !String(row[key]||'').toLowerCase().includes(tblState[tableKey].filters[key])) return false;
+        return true;
+    });
+    if(rawData.length === 0) return alert("Nenhum dado para exportar.");
+    XLSX.writeFile(XLSX.utils.book_append_sheet(XLSX.utils.book_new(), XLSX.utils.json_to_sheet(rawData), "Exportacao"), `${nomeArquivo}.xlsx`);
+}
+
+document.getElementById('btn-export-ressuprimento').addEventListener('click', () => exportarTabela('res', 'Nexus_Ressuprimento'));
+document.getElementById('btn-export-triagem').addEventListener('click', () => exportarTabela('tri', 'Nexus_Fila_Triagem'));
+
+/* =========================================================================
+   MOTOR 3D - TORRE DE CONTROLE DE TRIAGEM (CAIXAS REAIS)
+========================================================================= */
+let scene, camera, renderer, controls, palletMeshes = [], boxMeshes = [];
+let cameraTargetPos = new THREE.Vector3(), controlsTarget = new THREE.Vector3();
+let isAnimatingCamera = false;
+
+function initTriagem3D(dadosTriagem) {
+    const host = document.getElementById('warehouse3d');
+    if(!window.THREE) return;
+
+    const enderecosData = {};
+    if (dadosTriagem && dadosTriagem.length > 0) {
+        dadosTriagem.forEach(row => {
+            if(!enderecosData[row.endereço]) enderecosData[row.endereço] = [];
+            enderecosData[row.endereço].push(row);
+        });
+    }
+
+    const sortedAddrs = Object.keys(enderecosData).sort((a,b) => (parseInt(a.slice(-3))||0) - (parseInt(b.slice(-3))||0));
+
+    scene = new THREE.Scene();
+    window.scene3D = scene; 
+    
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    scene.fog = new THREE.Fog(isLight ? '#f4f6f9' : '#000000', 40, 120);
+
+    camera = new THREE.PerspectiveCamera(40, host.clientWidth / host.clientHeight, 0.1, 200);
+    camera.position.set(0, 25, 30); 
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(host.clientWidth, host.clientHeight);
+    host.appendChild(renderer.domElement);
+
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2.1;
+    controls.target.set(0, 0, 0);
+    controls.update();
+    
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x444444, 0.8));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), new THREE.MeshBasicMaterial({ color: 0x111b27, transparent: true, opacity: 0.8 }));
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    const matPallet = new THREE.MeshLambertMaterial({ color: 0x8b5a2b });
+    const matBoxNormal = new THREE.MeshLambertMaterial({ color: 0x4b7b99 });
+    const matBoxHighlight = new THREE.MeshLambertMaterial({ color: 0xff0000 });
+
+    const geoPallet = new THREE.BoxGeometry(1.2, 0.15, 1.2);
+
+    for (let i = 0; i < 96; i++) {
+        const block = Math.floor(i / 32); 
+        const indexInBlock = i % 32;
+        const row = Math.floor(indexInBlock / 16);
+        const col = indexInBlock % 16;
+        
+        const xPos = 10.5 - (col * 1.4); 
+        const zPos = (row * 1.4) + (block * 6) - 6; 
+
+        const pallet = new THREE.Mesh(geoPallet, matPallet);
+        pallet.position.set(xPos, 0.075, zPos);
+        pallet.userData = { slot: i, isEmpty: true };
+        scene.add(pallet);
+        palletMeshes.push(pallet);
+
+        if (i < sortedAddrs.length) {
+            const addr = sortedAddrs[i];
+            const dadosEnderecoRaw = enderecosData[addr] || [];
+            
+            // AGRUPAMENTO DE NFs EXATO
+            const nfMap = new Map();
+            dadosEnderecoRaw.forEach((r, idx) => {
+                let key = r.nf ? String(r.nf).trim() : null;
+                if (!key) key = r.caixa ? String(r.caixa).trim() : `gen_${idx}`;
+                if (!nfMap.has(key)) {
+                    nfMap.set(key, { nf: r.nf || key, grife: r.grife });
+                }
+            });
+            const caixasFisicas = Array.from(nfMap.values());
+            const totalBoxes = caixasFisicas.length;
+
+            pallet.userData.isEmpty = false;
+            pallet.userData.endereco = addr;
+            pallet.userData.dados = dadosEnderecoRaw;
+            pallet.userData.uniqueBoxesCount = totalBoxes;
+
+            // GRELHA DINÂMICA: Ajusta o tamanho e disposição para evitar o "prédio"
+            let gridSize = 2;
+            if (totalBoxes > 12) gridSize = 3;
+            if (totalBoxes > 36) gridSize = 4;
+            if (totalBoxes > 64) gridSize = 5;
+            if (totalBoxes > 125) gridSize = 6;
+            if (totalBoxes > 200) gridSize = 7;
+
+            const boxW = 1.1 / gridSize; 
+            const boxH = Math.min(0.35, boxW * 0.9); 
+            const geoBoxDynamic = new THREE.BoxGeometry(boxW, boxH, boxW);
+            const edgesGeo = new THREE.EdgesGeometry(geoBoxDynamic);
+            const matEdges = new THREE.LineBasicMaterial({ color: 0x223344 });
+
+            const boxesPerLayer = gridSize * gridSize;
+            const offset = (gridSize - 1) / 2;
+
+            for(let b = 0; b < totalBoxes; b++) {
+                const colB = b % gridSize;
+                const rowB = Math.floor((b % boxesPerLayer) / gridSize);
+                const level = Math.floor(b / boxesPerLayer);
+
+                const bx = (colB - offset) * (boxW * 1.05);
+                const bz = (rowB - offset) * (boxW * 1.05);
+                const by = 0.15 + (boxH / 2) + (level * boxH * 1.05); 
+
+                const boxMesh = new THREE.Mesh(geoBoxDynamic, matBoxNormal);
+                boxMesh.position.set(xPos + bx, by, zPos + bz);
+                boxMesh.userData = { nf: caixasFisicas[b].nf, isBox: true, parentPallet: pallet };
+                
+                const edges = new THREE.LineSegments(edgesGeo, matEdges);
+                boxMesh.add(edges);
+
+                scene.add(boxMesh);
+                boxMeshes.push(boxMesh);
+            }
+        }
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    let lastClickTime = 0;
+
+    host.addEventListener('click', (e) => {
+        const rect = host.getBoundingClientRect();
+        mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects([...palletMeshes, ...boxMeshes]);
+        
+        if (intersects.length > 0) {
+            let obj = intersects[0].object;
+            let targetPallet = obj.userData.isBox ? obj.userData.parentPallet : obj;
+            
+            if(!targetPallet.userData.isEmpty) {
+                openSidebar(targetPallet.userData);
+                
+                const now = Date.now();
+                if (now - lastClickTime < 300) animCameraTo(targetPallet.position);
+                lastClickTime = now;
+            }
+        }
+    });
+
+    document.getElementById('filterNF').addEventListener('keyup', (e) => {
+        const search = e.target.value.trim().toUpperCase();
+        let foundPallet = null;
+
+        palletMeshes.forEach(p => p.visible = true);
+
+        boxMeshes.forEach(box => {
+            if(search === "") {
+                box.visible = true; box.material = matBoxNormal;
+            } else {
+                if(box.userData.nf && String(box.userData.nf).toUpperCase().includes(search)) {
+                    box.material = matBoxHighlight; 
+                    foundPallet = box.userData.parentPallet;
+                    box.visible = true;
+                } else {
+                    box.visible = false;
+                }
+            }
+        });
+
+        if (search !== "") {
+            palletMeshes.forEach(p => { if(p !== foundPallet) p.visible = false; });
+            if(foundPallet) animCameraTo(foundPallet.position);
+        }
+    });
+
+    function animCameraTo(targetPos) {
+        controlsTarget.copy(targetPos);
+        cameraTargetPos.set(targetPos.x, targetPos.y + 5, targetPos.z + 8);
+        isAnimatingCamera = true;
+    }
+
+    function animate() {
+        requestAnimationFrame(animate);
+        if(isAnimatingCamera) {
+            camera.position.lerp(cameraTargetPos, 0.05);
+            controls.target.lerp(controlsTarget, 0.05);
+            if(camera.position.distanceTo(cameraTargetPos) < 0.1) isAnimatingCamera = false;
+        }
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        renderer.setSize(host.clientWidth, host.clientHeight);
+        camera.aspect = host.clientWidth / host.clientHeight;
+        camera.updateProjectionMatrix();
+    });
+}
+
+
+
+function openSidebar(palletData) {
+    const rawDados = palletData.dados || [];
+    document.getElementById('psAddr').textContent = palletData.endereco;
+    
+    let fornecedores = new Set(), grifes = new Set(), totalPcs = 0, nfMap = {};
+    
+    rawDados.forEach(c => {
+        if(c.fornecedor) fornecedores.add(c.fornecedor);
+        if(c.grife) grifes.add(c.grife);
+        totalPcs += (c.qtde || 0);
+        
+        // Busca resiliente: varre as chaves ignorando espaços, maiúsculas e underlines
+        let totalNF = 0;
+        let volsNF = 0;
+        for (let key in c) {
+            let kClean = key.toLowerCase().replace(/_/g, ' ').trim();
+            if (kClean.includes('total nf')) totalNF = Number(c[key]) || 0;
+            if (kClean === 'volumes' || kClean === 'volume') volsNF = Number(c[key]) || 0;
+        }
+        
+        if(!nfMap[c.nf]) {
+            nfMap[c.nf] = { grifes: new Set(), pcs: 0, totalNF: 0, volumes: 0 };
+        }
+        
+        if(c.grife) nfMap[c.nf].grifes.add(c.grife);
+        nfMap[c.nf].pcs += (c.qtde || 0);
+        
+        if (totalNF > nfMap[c.nf].totalNF) nfMap[c.nf].totalNF = totalNF;
+        if (volsNF > nfMap[c.nf].volumes) nfMap[c.nf].volumes = volsNF;
+    });
+
+    document.getElementById('psFornecedor').textContent = Array.from(fornecedores).join(', ') || 'N/A';
+    document.getElementById('psGrifes').textContent = Array.from(grifes).join(', ') || 'N/A';
+    document.getElementById('psPecas').textContent = fmtT.format(totalPcs);
+    document.getElementById('psVolumes').textContent = palletData.uniqueBoxesCount; 
+    document.getElementById('psNfs').textContent = Object.keys(nfMap).length;
+
+    const accordion = document.getElementById('psAccordion');
+    accordion.innerHTML = '';
+    
+    Object.keys(nfMap).forEach(nf => {
+        const obj = nfMap[nf];
+        const head = document.createElement('div');
+        head.className = 'nf-header';
+        head.innerHTML = `<span>NF: ${nf}</span> <span>${fmtT.format(obj.pcs)} pçs</span>`;
+        
+        const body = document.createElement('div');
+        body.className = 'nf-body';
+        const grifeStr = Array.from(obj.grifes).join(', ') || 'N/A';
+        
+        body.innerHTML = `
+            <b>Grife:</b> ${grifeStr} <br> 
+            <b>Quantidade lida:</b> ${fmtT.format(obj.pcs)} <br> 
+            <b>Total da NF:</b> ${fmtT.format(obj.totalNF)} <br>
+            <b>Volumes da NF:</b> ${fmtT.format(obj.volumes)}
+        `;
+
+        head.onclick = () => { body.classList.toggle('open'); };
+        accordion.appendChild(head);
+        accordion.appendChild(body);
+    });
+
+    document.getElementById('palletSidebar').classList.add('open');
+}
+
+function closeSidebar() {
+    document.getElementById('palletSidebar').classList.remove('open');
+}
+</script>
+</body>
+</html>
